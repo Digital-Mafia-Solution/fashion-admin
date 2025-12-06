@@ -1,4 +1,4 @@
-# Vite + React + TypeScript Boilerplate
+# Digital Mafia Boilerplate
 
 This repository has been converted into a reusable boilerplate built with Vite, React, and TypeScript. It contains a minimal project structure and a handful of generic components to help you kickstart new projects quickly.
 
@@ -18,7 +18,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173` (or the port Vite reports).
+Open `http://localhost:8080` (or the port Vite reports).
 
 ## What I changed
 
