@@ -16,6 +16,7 @@
     "cmdk": "^1.1.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-phone-number-input": "^3.4.14",
     "react-router-dom": "^7.9.6",
     "tailwindcss": "^4.1.17",
     "tailwindcss-animate": "^1.0.7"
