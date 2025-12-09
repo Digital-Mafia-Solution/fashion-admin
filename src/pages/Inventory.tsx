@@ -478,7 +478,7 @@ export default function Inventory() {
 
       {/* Add Product Dialog (Admin Only) */}
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-        <DialogContent>
+        <DialogContent className="text-primary">
           <DialogHeader>
             <DialogTitle>Add New Product</DialogTitle>
           </DialogHeader>
