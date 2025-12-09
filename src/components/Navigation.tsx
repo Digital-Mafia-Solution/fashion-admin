@@ -6,7 +6,7 @@ export default function Navigation() {
   const [open, setOpen] = useState(false);
 
   return (
-    <header className="w-full border-b bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm">
+    <header className="text-primary w-full border-b bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm">
       <div className="container mx-auto px-6 py-4 flex items-center justify-between">
         <Link to="/" className="font-semibold text-lg flex items-center gap-3">
           <span className="inline-block w-9 h-9 rounded-md bg-linear-to-br from-(--color-primary) to-(--color-accent) shadow-md" />
