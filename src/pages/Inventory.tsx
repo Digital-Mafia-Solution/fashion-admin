@@ -27,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Plus, Search, MapPin, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
@@ -247,7 +248,7 @@ export default function Inventory() {
         </div>
       </div>
 
-      <div className="border rounded-md bg-card">
+      <div className="hidden md:block border rounded-md bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -339,6 +340,53 @@ export default function Inventory() {
             )}
           </TableBody>
         </Table>
+      </div>
+
+      {/* MOBILE CARD VIEW */}
+      <div className="grid grid-cols-1 gap-4 md:hidden">
+        {loading ? (
+           <div className="text-center py-10"><Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" /></div>
+        ) : filteredProducts.map((product) => (
+          <Card key={product.id}>
+            <CardHeader className="pb-2">
+              <div className="flex justify-between items-start">
+                <div className="flex items-center gap-3">
+                   <div className="h-10 w-10 bg-muted rounded-md overflow-hidden border border-border shrink-0">
+                      {product.image_url ? (
+                          <img src={product.image_url} className="h-full w-full object-cover" />
+                      ) : <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">Img</div>}
+                   </div>
+                   <div>
+                      <CardTitle className="text-base">{product.name}</CardTitle>
+                      <div className="text-xs text-muted-foreground font-mono">{product.sku}</div>
+                   </div>
+                </div>
+                <div className="font-bold">R {product.price}</div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <div className="text-xs font-semibold text-muted-foreground uppercase">Stock Levels</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {product.inventory
+                    .filter(inv => isAdmin || inv.location_id === profile?.assigned_location_id)
+                    .map((inv, i) => (
+                    <div key={i} className="text-xs flex flex-col border rounded p-2 bg-muted/20">
+                      <span className="font-medium truncate">{inv.locations?.name}</span>
+                      <span className={inv.quantity > 0 ? "text-green-600 font-bold" : "text-red-500 font-bold"}>
+                        {inv.quantity} units
+                      </span>
+                    </div>
+                  ))}
+                  {product.inventory.length === 0 && <span className="text-xs italic text-muted-foreground">No stock records</span>}
+                </div>
+                <Button size="sm" variant="secondary" className="w-full mt-2" onClick={() => openStockDialog(product)}>
+                  Update Stock
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       {/* Stock Update Dialog */}
