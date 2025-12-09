@@ -226,11 +226,11 @@ export default function Inventory() {
             <RefreshCw
               className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`}
             />
-            Refresh
+            <span className="hidden md:inline">Refresh</span>
           </Button>
           {isAdmin && (
             <Button className="gap-2" onClick={() => setIsAddOpen(true)}>
-              <Plus className="h-4 w-4" /> Add Product
+              <Plus className="h-4 w-4" /> <span className="hidden md:inline">Add Product</span>
             </Button>
           )}
         </div>
