@@ -1,25 +1,51 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "../components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardFooter,
+} from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Truck, Store, User, PackageCheck, Loader2 } from "lucide-react";
+import {
+  Truck,
+  Store,
+  User,
+  Package as PackageIcon,
+  Check,
+  CheckCircle2,
+  RefreshCw,
+  Loader2,
+} from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
-// Interfaces
-interface Profile { 
-  full_name: string | null; 
-  first_name: string | null; 
+interface Profile {
+  full_name: string | null;
+  first_name: string | null;
   last_name: string | null;
-  email: string | null; 
-  phone: string | null; 
+  email: string | null;
+  phone: string | null;
 }
-interface OrderItem { quantity: number; products: { name: string; } | null; }
+interface OrderItem {
+  quantity: number;
+  products: { name: string } | null;
+}
 interface Order {
-  id: string; created_at: string; status: string; total_amount: number; fulfillment_type: string; delivery_address: string | null;
-  locations: { name: string; } | null; profiles: Profile | null; order_items: OrderItem[]; pickup_location_id: string | null;
+  id: string;
+  created_at: string;
+  status: string;
+  total_amount: number;
+  fulfillment_type: string;
+  delivery_address: string | null;
+  locations: { name: string } | null;
+  profiles: Profile | null;
+  order_items: OrderItem[];
+  pickup_location_id: string | null;
 }
 
 export default function Orders() {
@@ -27,147 +53,291 @@ export default function Orders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // FIX: Moved fetchOrders inside useEffect to avoid memoization errors
+  const locationId = profile?.assigned_location_id;
+
+  const fetchOrders = useCallback(async () => {
+    setLoading(true);
+    let query = supabase.from("orders").select(`
+        *,
+        profiles:profiles!orders_customer_id_fkey (full_name, first_name, last_name, email, phone),
+        locations (name),
+        order_items (
+            quantity,
+            products (name)
+        )
+      `);
+
+    if (!isAdmin && locationId) {
+      query = query.eq("pickup_location_id", locationId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error("Error fetching orders:", error);
+      toast.error("Failed to load orders");
+    } else if (data) {
+      const rawOrders = data as unknown as Order[];
+
+      const sorted = rawOrders.sort((a, b) => {
+        const openStatuses = ["paid", "pending", "packed", "ready", "transit"];
+        const aIsOpen = openStatuses.includes(a.status);
+        const bIsOpen = openStatuses.includes(b.status);
+
+        if (aIsOpen && !bIsOpen) return -1;
+        if (!aIsOpen && bIsOpen) return 1;
+        return (
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+      });
+
+      setOrders(sorted);
+    }
+    setLoading(false);
+  }, [isAdmin, locationId]);
+
   useEffect(() => {
-    const fetchOrders = async () => {
-      let query = supabase
-        .from("orders")
-        .select(`
-          *,
-          profiles (full_name, first_name, last_name, email, phone),
-          locations (name),
-          order_items (
-              quantity,
-              products (name)
-          )
-        `)
-        .order('created_at', { ascending: false });
+    let isMounted = true;
 
-      if (!isAdmin && profile?.assigned_location_id) {
-         query = query.eq('fulfillment_type', 'pickup')
-                      .eq('pickup_location_id', profile.assigned_location_id);
+    (async () => {
+      if (isMounted) {
+        await fetchOrders();
       }
-        
-      const { data, error } = await query;
-      
-      if (error) {
-        console.error("Error fetching orders:", error);
-      } else if (data) {
-        setOrders(data as unknown as Order[]);
-      }
-      setLoading(false);
-    };
+    })();
 
-    fetchOrders();
-
-    const channel = supabase.channel('admin-orders')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-         toast.info("Order list updated");
-         fetchOrders();
-      })
+    const channel = supabase
+      .channel("admin-orders")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders" },
+        () => {
+          if (isMounted) {
+            fetchOrders();
+          }
+        }
+      )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, [isAdmin, profile]); // Simple dependencies
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, [fetchOrders]);
 
   const updateStatus = async (id: string, status: string) => {
-    const { error } = await supabase.from('orders').update({ status }).eq('id', id);
-    if (!error) toast.success(`Order marked as ${status}`);
+    const { error } = await supabase
+      .from("orders")
+      .update({ status })
+      .eq("id", id);
+    if (!error) toast.success(`Order updated to ${status.toUpperCase()}`);
     else toast.error("Failed to update status");
   };
 
-  // Helper to format name
   const getCustomerName = (p: Profile | null) => {
     if (!p) return "Guest User";
     if (p.first_name && p.last_name) return `${p.first_name} ${p.last_name}`;
     return p.full_name || "Unknown";
   };
 
-  if (loading) return <div className="flex justify-center p-20"><Loader2 className="animate-spin text-muted-foreground" /></div>;
+  const renderActionButton = (order: Order) => {
+    if (["pos_complete", "delivered", "collected"].includes(order.status))
+      return null;
+
+    if (order.status === "paid") {
+      return (
+        <Button
+          className="w-full gap-2 bg-blue-600 hover:bg-blue-700"
+          onClick={() => updateStatus(order.id, "packed")}
+        >
+          <PackageIcon className="h-4 w-4" /> Pack Order
+        </Button>
+      );
+    }
+
+    if (order.status === "packed") {
+      if (order.fulfillment_type === "courier") {
+        return (
+          <Button
+            className="w-full gap-2 bg-orange-600 hover:bg-orange-700"
+            onClick={() => updateStatus(order.id, "transit")}
+          >
+            <Truck className="h-4 w-4" /> Dispatch to Courier
+          </Button>
+        );
+      } else {
+        return (
+          <Button
+            className="w-full gap-2 bg-green-600 hover:bg-green-700"
+            onClick={() => updateStatus(order.id, "ready")}
+          >
+            <Check className="h-4 w-4" /> Ready for Collection
+          </Button>
+        );
+      }
+    }
+
+    if (order.status === "transit") {
+      return (
+        <Button
+          variant="outline"
+          className="w-full gap-2 border-orange-500 text-orange-600"
+          disabled
+        >
+          <Truck className="h-4 w-4" /> In Transit
+        </Button>
+      );
+    }
+
+    if (order.status === "ready") {
+      return (
+        <Button
+          className="w-full gap-2 bg-green-600 hover:bg-green-700"
+          onClick={() => updateStatus(order.id, "collected")}
+        >
+          <Check className="h-4 w-4" /> Mark Collected
+        </Button>
+      );
+    }
+
+    return null;
+  };
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight">Orders</h1>
-      
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {orders.map((order) => (
-          <Card key={order.id} className="flex flex-col border-l-4 border-l-primary">
-            <CardHeader className="pb-3 bg-muted/10">
-              <div className="flex justify-between items-start">
-                <div>
-                    <CardTitle className="text-base font-bold">#{order.id.slice(0, 8)}</CardTitle>
-                    <CardDescription>{format(new Date(order.created_at), "MMM dd, HH:mm")}</CardDescription>
-                </div>
-                <Badge className={
-                    order.status === 'paid' ? 'bg-green-600' : 
-                    order.status === 'pending' ? 'bg-orange-500' : 'bg-secondary'
-                }>
-                    {order.status}
-                </Badge>
-              </div>
-            </CardHeader>
-            
-            <CardContent className="flex-1 space-y-4 pt-4">
-              <div className="flex items-start gap-3 text-sm p-2 rounded bg-muted/40 border">
-                <User className="h-4 w-4 mt-0.5 text-muted-foreground" />
-                <div>
-                    <div className="font-medium">{getCustomerName(order.profiles)}</div>
-                    <div className="text-xs text-muted-foreground">{order.profiles?.phone || order.profiles?.email}</div>
-                </div>
-              </div>
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold tracking-tight">Orders</h1>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={fetchOrders}
+          disabled={loading}
+        >
+          <RefreshCw
+            className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`}
+          />
+          Refresh
+        </Button>
+      </div>
 
-              <div className="space-y-2">
-                {order.fulfillment_type === 'pickup' ? (
-                  <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 dark:bg-blue-900/20 p-2 rounded border border-blue-100 dark:border-blue-900">
-                    <Store className="h-4 w-4" />
-                    <span className="font-medium">Collect: {order.locations?.name}</span>
+      {loading ? (
+        <div className="flex justify-center p-20">
+          <Loader2 className="animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {orders.map((order) => (
+            <Card
+              key={order.id}
+              className={`flex flex-col border-l-4 
+                ${
+                  order.status === "pos_complete"
+                    ? "border-l-emerald-500"
+                    : ["delivered", "collected"].includes(order.status)
+                    ? "border-l-gray-400"
+                    : "border-l-blue-600"
+                }`}
+            >
+              <CardHeader className="pb-3 bg-muted/10">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="text-base font-bold">
+                      #{order.id.slice(0, 8)}
+                    </CardTitle>
+                    <CardDescription>
+                      {format(new Date(order.created_at), "MMM dd, HH:mm")}
+                    </CardDescription>
                   </div>
-                ) : (
-                  <div className="flex items-start gap-2 text-sm text-orange-600 bg-orange-50 dark:bg-orange-900/20 p-2 rounded border border-orange-100 dark:border-orange-900">
-                    <Truck className="h-4 w-4 mt-0.5" />
-                    <div className="break-all">
-                        <span className="font-medium block">Delivery to:</span>
-                        <span className="opacity-90">{order.delivery_address}</span>
+                  <Badge
+                    variant={
+                      ["delivered", "pos_complete", "collected"].includes(
+                        order.status
+                      )
+                        ? "secondary"
+                        : "default"
+                    }
+                    className="capitalize"
+                  >
+                    {order.status.replace("_", " ")}
+                  </Badge>
+                </div>
+              </CardHeader>
+
+              <CardContent className="flex-1 space-y-4 pt-4">
+                <div className="flex items-start gap-3 text-sm p-2 rounded bg-muted/40 border">
+                  <User className="h-4 w-4 mt-0.5 text-muted-foreground" />
+                  <div>
+                    <div className="font-medium">
+                      {getCustomerName(order.profiles)}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {order.profiles?.phone || order.profiles?.email}
                     </div>
                   </div>
-                )}
-              </div>
-              
-              <div className="text-sm">
-                  <div className="font-medium mb-1 text-xs uppercase tracking-wider text-muted-foreground">Items</div>
+                </div>
+
+                <div className="space-y-2">
+                  {order.fulfillment_type === "pickup" ? (
+                    <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 dark:bg-blue-900/20 p-2 rounded border border-blue-100 dark:border-blue-900">
+                      <Store className="h-4 w-4" />
+                      <span className="font-medium">
+                        Collect: {order.locations?.name || "Global Store"}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-2 text-sm text-orange-600 bg-orange-50 dark:bg-orange-900/20 p-2 rounded border border-orange-100 dark:border-orange-900">
+                      <Truck className="h-4 w-4 mt-0.5" />
+                      <div className="break-all">
+                        <span className="font-medium block">Delivery to:</span>
+                        <span className="opacity-90">
+                          {order.delivery_address}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="text-sm">
+                  <div className="font-medium mb-1 text-xs uppercase tracking-wider text-muted-foreground">
+                    Items
+                  </div>
                   <ul className="list-disc pl-4 space-y-1 text-muted-foreground">
-                      {/* FIX: Replaced 'any' with OrderItem type */}
-                      {order.order_items?.map((item: OrderItem, i: number) => (
-                          <li key={i}>
-                             <span className="text-foreground font-medium">{item.products?.name}</span> 
-                             <span className="opacity-70 ml-1">(x{item.quantity})</span>
-                          </li>
-                      ))}
+                    {order.order_items?.map((item: OrderItem, i: number) => (
+                      <li key={i}>
+                        <span className="text-foreground font-medium">
+                          {item.products?.name}
+                        </span>
+                        <span className="opacity-70 ml-1">
+                          (x{item.quantity})
+                        </span>
+                      </li>
+                    ))}
                   </ul>
-              </div>
-            </CardContent>
-            
-            <CardFooter className="pt-4 border-t bg-muted/10">
-                {order.status !== 'ready' && order.status !== 'delivered' && (
-                    <Button className="w-full gap-2" onClick={() => updateStatus(order.id, 'ready')}>
-                        <PackageCheck className="h-4 w-4" /> Mark as Ready
-                    </Button>
+                </div>
+              </CardContent>
+
+              <CardFooter className="pt-4 border-t bg-muted/10">
+                {renderActionButton(order)}
+
+                {order.status === "pos_complete" && (
+                  <div className="w-full text-center text-xs text-muted-foreground italic">
+                    POS Completed
+                  </div>
                 )}
-                {order.status === 'ready' && (
-                    <Button variant="outline" className="w-full gap-2 border-green-500 text-green-600 hover:bg-green-50" disabled>
-                        <CheckIcon className="h-4 w-4" /> Ready for Collection
-                    </Button>
+                {order.status === "delivered" && (
+                  <div className="w-full text-center text-xs text-muted-foreground italic flex items-center justify-center gap-1">
+                    <CheckCircle2 className="h-3 w-3" /> Delivered
+                  </div>
                 )}
-            </CardFooter>
-          </Card>
-        ))}
-      </div>
+                {order.status === "collected" && (
+                  <div className="w-full text-center text-xs text-muted-foreground italic flex items-center justify-center gap-1">
+                    <CheckCircle2 className="h-3 w-3" /> Collected by Customer
+                  </div>
+                )}
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
-}
-
-// Helper icon component
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function CheckIcon(props: any) {
-    return <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
 }

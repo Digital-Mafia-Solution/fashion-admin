@@ -1,10 +1,19 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
-import { Card } from "../components/ui/card";
+import { Card, CardContent, CardFooter } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
-import { CheckCircle2, MapPin, Truck, Box, Shield, Loader2 } from "lucide-react";
+import {
+  CheckCircle2,
+  MapPin,
+  Truck,
+  Shield,
+  Loader2,
+  RefreshCw,
+  Phone,
+} from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "../components/ui/button";
 
 // Interfaces
 interface OrderItem {
@@ -38,10 +47,59 @@ export default function Logistics() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Check if the user is a driver
-  const isDriver = profile?.role === 'driver';
-  // Allow access if Admin OR Driver
+  const isDriver = profile?.role === "driver";
   const hasAccess = isAdmin || isDriver;
+
+  async function loadLogistics() {
+    setLoading(true);
+    try {
+      // 1. Fetch potential tasks (Packed or Transit)
+      const { data, error } = await supabase
+        .from("orders")
+        .select(
+          `
+            id, status, fulfillment_type, delivery_address,
+            profiles:profiles!orders_customer_id_fkey (full_name, first_name, last_name, phone, email),
+            locations(name, address),
+            order_items(
+                quantity,
+                products(name)
+            )
+        `
+        )
+        .neq("status", "pos_complete")
+        .in("status", ["packed", "transit"]) // Fetch broader set, filter below
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+
+      if (data) {
+        const allTasks = data as unknown as Task[];
+
+        // 2. Strict Filtering Logic
+        const visibleTasks = allTasks.filter((task) => {
+          // Rule 1: Delivery orders must be 'transit' (Dispatched)
+          if (task.fulfillment_type === "courier") {
+            return task.status === "transit";
+          }
+
+          // Rule 2: Pickup orders must be 'packed' (Ready to move to store)
+          if (task.fulfillment_type === "pickup") {
+            return task.status === "packed";
+          }
+
+          return false;
+        });
+
+        setTasks(visibleTasks);
+      }
+    } catch (error) {
+      console.error("Error loading logistics:", error);
+      toast.error("Failed to load run sheet");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (!hasAccess) {
@@ -49,170 +107,187 @@ export default function Logistics() {
       return;
     }
 
-    async function loadLogistics() {
-      try {
-        const { data, error } = await supabase
-          .from('orders')
-          .select(`
-              id, status, fulfillment_type, delivery_address,
-              profiles(full_name, first_name, last_name, phone, email),
-              locations(name, address),
-              order_items(
-                  quantity,
-                  products(name)
-              )
-          `)
-          // Fetch orders that are ready for action (paid, packed, or already moving)
-          .in('status', ['paid', 'packed', 'transit', 'ready'])
-          .order('created_at', { ascending: true }); // Oldest first (FIFO)
-
-        if (error) throw error;
-
-        if (data) {
-          setTasks(data as unknown as Task[]);
-        }
-      } catch (error) {
-        console.error("Error loading logistics:", error);
-        toast.error("Failed to load run sheet");
-      } finally {
-        setLoading(false);
-      }
-    }
-
     loadLogistics();
-    
-    // Realtime subscription for new tasks
-    const channel = supabase.channel('logistics-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        loadLogistics();
-      })
+
+    const channel = supabase
+      .channel("logistics-updates")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders" },
+        () => {
+          loadLogistics();
+        }
+      )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [hasAccess]);
 
-  const getCustomerName = (p: Task['profiles']) => {
+  const getCustomerName = (p: Task["profiles"]) => {
     if (!p) return "Guest";
     if (p.first_name && p.last_name) return `${p.first_name} ${p.last_name}`;
     return p.full_name || "Unknown";
   };
 
-  const handleCompleteTask = async (taskId: string) => {
-    // Determine next status based on current state (simplified logic)
-    // Real logic would be: Picked Up -> In Transit -> Delivered
+  const handleCompleteTask = async (task: Task) => {
+    // Logic:
+    // Pickup (Packed) -> Driver drops at store -> Ready
+    // Courier (Transit) -> Driver drops at customer -> Delivered
+    const newStatus =
+      task.fulfillment_type === "pickup" ? "ready" : "delivered";
+
     const { error } = await supabase
-      .from('orders')
-      .update({ status: 'delivered' })
-      .eq('id', taskId);
+      .from("orders")
+      .update({ status: newStatus })
+      .eq("id", task.id);
 
     if (error) {
       toast.error("Failed to update status");
     } else {
-      toast.success("Task marked as complete");
-      // Optimistic update
-      setTasks(prev => prev.filter(t => t.id !== taskId));
+      const msg =
+        newStatus === "ready"
+          ? "Dropped at store (Ready)"
+          : "Delivered to customer";
+      toast.success(msg);
+      setTasks((prev) => prev.filter((t) => t.id !== task.id));
     }
   };
 
   if (loading) {
-    return <div className="flex justify-center p-20"><Loader2 className="animate-spin text-muted-foreground" /></div>;
+    return (
+      <div className="flex justify-center p-20">
+        <Loader2 className="animate-spin text-muted-foreground" />
+      </div>
+    );
   }
 
-  // Access Denied View
   if (!hasAccess) {
     return (
-        <div className="flex flex-col items-center justify-center h-[50vh] text-muted-foreground">
-            <Shield className="h-12 w-12 mb-4 text-orange-500" />
-            <h2 className="text-xl font-bold">Access Restricted</h2>
-            <p>Logistics runs are accessible to Drivers and Head Office only.</p>
-        </div>
+      <div className="flex flex-col items-center justify-center h-[50vh] text-muted-foreground">
+        <Shield className="h-12 w-12 mb-4 text-orange-500" />
+        <h2 className="text-xl font-bold">Access Restricted</h2>
+        <p>Logistics runs are accessible to Drivers and Head Office only.</p>
+      </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center bg-card p-4 rounded-lg border shadow-sm sticky top-0 z-10 md:static">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Logistics Run Sheet</h1>
-          <p className="text-muted-foreground">
-            {isDriver ? `Driver: ${profile?.full_name}` : "Global Operations View"}
+          <h1 className="text-xl md:text-3xl font-bold tracking-tight">
+            Logistics
+          </h1>
+          <p className="text-xs md:text-sm text-muted-foreground">
+            {isDriver ? `Driver: ${profile?.full_name}` : "Global Operations"}
           </p>
         </div>
-        <Badge variant="outline" className="h-fit">
-          {tasks.length} Active Tasks
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" onClick={() => loadLogistics()}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Badge variant="default" className="h-fit">
+            {tasks.length} Active
+          </Badge>
+        </div>
       </div>
-      
+
       {tasks.length === 0 ? (
-        <div className="text-center py-20 border rounded-lg bg-card text-muted-foreground">
-          No active logistics tasks found.
+        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-4">
+          <Truck className="h-12 w-12 opacity-20" />
+          <p>You're all caught up! No active tasks.</p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {tasks.map((task) => (
-            <Card key={task.id} className="overflow-hidden">
-              <div className="flex flex-col md:flex-row border-l-4 border-blue-500">
-                  {/* Left: Status & ID */}
-                  <div className="bg-muted/10 p-4 w-full md:w-48 flex flex-col justify-center border-b md:border-b-0 md:border-r">
-                      <div className="font-mono font-bold text-lg">#{task.id.slice(0,6)}</div>
-                      <Badge variant="secondary" className="w-fit mt-2 uppercase text-[10px]">
-                        {task.status}
-                      </Badge>
-                      <div className="text-xs text-muted-foreground mt-2 font-medium">
-                        {getCustomerName(task.profiles)}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {task.profiles?.phone || task.profiles?.email}
-                      </div>
+            <Card
+              key={task.id}
+              className="overflow-hidden border-l-4 border-l-blue-500 flex flex-col h-full shadow-sm"
+            >
+              <CardContent className="p-4 flex-1 space-y-4">
+                {/* Header */}
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="font-mono text-sm font-bold text-muted-foreground">
+                      #{task.id.slice(0, 6)}
+                    </div>
+                    <h3 className="font-bold text-lg">
+                      {getCustomerName(task.profiles)}
+                    </h3>
                   </div>
+                  <Badge variant="outline" className="uppercase text-[10px]">
+                    {task.status}
+                  </Badge>
+                </div>
 
-                  {/* Middle: The Route */}
-                  <div className="p-4 flex-1 space-y-4">
-                      <div className="flex items-center gap-4 text-sm">
-                          <div className="flex items-center gap-2 text-muted-foreground">
-                              <Box className="h-4 w-4" />
-                              {/* In a real app, you'd fetch the source store name from order_items or inventory */}
-                              <span>Pickup: <strong>Check Inventory Source</strong></span> 
-                          </div>
-                          <div className="flex-1 border-b border-dashed border-muted-foreground/30"></div>
-                          <div className="flex items-center gap-2">
-                              {task.fulfillment_type === 'pickup' ? (
-                                  <div className="flex items-center gap-2 text-blue-600">
-                                    <StoreIcon className="h-4 w-4"/>
-                                    <span className="font-bold">Drop at: {task.locations?.name}</span>
-                                  </div>
-                              ) : (
-                                  <div className="flex items-center gap-2 text-orange-600">
-                                    <TruckIcon className="h-4 w-4"/>
-                                    <span className="font-bold">Deliver to: {task.delivery_address}</span>
-                                  </div>
-                              )}
-                          </div>
+                {/* Address */}
+                <div className="bg-muted/30 p-3 rounded-md border border-border/50">
+                  <div className="flex items-start gap-3">
+                    {task.fulfillment_type === "pickup" ? (
+                      <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-full">
+                        <MapPin className="h-4 w-4 text-blue-600" />
                       </div>
-                      
-                      <div className="bg-muted/30 p-3 rounded-md text-sm">
-                          <div className="font-medium mb-1 text-xs uppercase tracking-wider text-muted-foreground">Manifest</div>
-                          <ul className="list-disc pl-4 text-muted-foreground">
-                              {task.order_items.map((item, i) => (
-                                  <li key={i}>
-                                    <span className="font-medium text-foreground">{item.quantity}x</span> {item.products?.name}
-                                  </li>
-                              ))}
-                          </ul>
+                    ) : (
+                      <div className="bg-orange-100 dark:bg-orange-900/30 p-2 rounded-full">
+                        <Truck className="h-4 w-4 text-orange-600" />
                       </div>
+                    )}
+                    <div className="text-sm">
+                      <span className="font-semibold block text-xs text-muted-foreground uppercase tracking-wide">
+                        {task.fulfillment_type === "pickup"
+                          ? "Store Pickup"
+                          : "Delivery"}
+                      </span>
+                      <span className="text-sm leading-tight">
+                        {task.fulfillment_type === "pickup"
+                          ? task.locations?.name
+                          : task.delivery_address}
+                      </span>
+                    </div>
                   </div>
+                </div>
 
-                  {/* Right: Actions */}
-                  <div className="p-4 flex items-center justify-end bg-muted/5 gap-2">
-                      <button 
-                        onClick={() => handleCompleteTask(task.id)}
-                        className="flex flex-col items-center gap-1 text-xs text-muted-foreground hover:text-green-600 transition-colors p-2"
-                      >
-                          <CheckCircle2 className="h-8 w-8" />
-                          <span>Complete</span>
-                      </button>
+                {/* Contact */}
+                {(task.profiles?.phone || task.profiles?.email) && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
+                    <Phone className="h-3 w-3" />
+                    <span>{task.profiles.phone || task.profiles.email}</span>
                   </div>
-              </div>
+                )}
+
+                {/* Items */}
+                <div className="pt-2 border-t border-dashed">
+                  <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">
+                    Items ({task.order_items.length})
+                  </div>
+                  <ul className="text-sm space-y-1">
+                    {task.order_items.map((item, i) => (
+                      <li key={i} className="flex justify-between">
+                        <span className="truncate pr-2">
+                          {item.products?.name}
+                        </span>
+                        <span className="font-mono text-xs font-bold bg-muted px-1.5 rounded">
+                          x{item.quantity}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </CardContent>
+
+              <CardFooter className="pt-4 border-t bg-muted/10">
+                <Button
+                  className="w-full rounded-t-none h-12 gap-2 text-base"
+                  onClick={() => handleCompleteTask(task)}
+                >
+                  <CheckCircle2 className="h-5 w-5" />
+                  {task.fulfillment_type === "pickup"
+                    ? "Dropped at Store"
+                    : "Delivered"}
+                </Button>
+              </CardFooter>
             </Card>
           ))}
         </div>
@@ -220,7 +295,3 @@ export default function Logistics() {
     </div>
   );
 }
-
-// Helper icons with typed props
-const TruckIcon = (props: React.SVGProps<SVGSVGElement>) => <Truck {...props} />;
-const StoreIcon = (props: React.SVGProps<SVGSVGElement>) => <MapPin {...props} />;
