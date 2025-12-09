@@ -391,7 +391,7 @@ export default function Inventory() {
 
       {/* Stock Update Dialog */}
       <Dialog open={isStockOpen} onOpenChange={setIsStockOpen}>
-        <DialogContent>
+        <DialogContent className="text-primary">
           <DialogHeader>
             <DialogTitle>Update Stock</DialogTitle>
             <DialogDescription>
