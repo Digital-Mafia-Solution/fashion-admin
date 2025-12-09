@@ -206,3 +206,12 @@ html {
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--color-primary) / 0.8);
 }
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
