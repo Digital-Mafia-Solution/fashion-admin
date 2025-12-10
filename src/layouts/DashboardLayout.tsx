@@ -7,7 +7,6 @@ import {
   Users,
   Settings,
   LogOut,
-  Store,
   Menu,
 } from "lucide-react";
 import { cn } from "../lib/utils";
@@ -26,6 +25,7 @@ import {
   SheetTitle,
 } from "../components/ui/sheet";
 import { useState } from "react";
+import Logo from "../assets/logo.svg";
 
 // 1. Define interfaces outside
 interface NavItem {
@@ -130,8 +130,8 @@ export default function DashboardLayout() {
       {/* DESKTOP SIDEBAR */}
       <aside className="w-64 bg-card border-r border-border hidden md:flex flex-col">
         <div className="h-16 flex items-center px-6 border-b border-border gap-2">
-          <Store className="h-6 w-6 text-primary" />
-          <span className="font-bold text-lg tracking-tight">DM Admin</span>
+          <img src={Logo} className="h-6 w-6 text-primary" />
+          <span className="font-bold text-lg tracking-tight">Splaza Admin</span>
         </div>
 
         <nav className="flex-1 p-4">
