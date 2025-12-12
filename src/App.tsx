@@ -9,6 +9,7 @@ import Dashboard from "./pages/Index";
 import Inventory from "./pages/Inventory";
 import Orders from "./pages/Orders";
 import Logistics from "./pages/Logistics";
+import Stores from "./pages/Stores";
 import Staff from "./pages/Staff";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
@@ -19,12 +20,13 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
-          
+
           <Route element={<DashboardLayout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/orders" element={<Orders />} />
             <Route path="/logistics" element={<Logistics />} />
+            <Route path="/stores" element={<Stores />} />
             <Route path="/staff" element={<Staff />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<NotFound />} />

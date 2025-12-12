@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
+import type { Database } from "../lib/database.types";
+import { useUpdatingSet } from "../hooks/use-updating-set";
 import { Card, CardContent, CardFooter } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import {
@@ -16,36 +18,26 @@ import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 
 // Interfaces
-interface OrderItem {
-  quantity: number;
-  products: {
-    name: string;
-  } | null;
-}
+type OrderRow = Database["public"]["Tables"]["orders"]["Row"];
+type OrderItemRow = Database["public"]["Tables"]["order_items"]["Row"];
+type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
+type LocationRow = Database["public"]["Tables"]["locations"]["Row"];
 
-interface Task {
-  id: string;
-  status: string;
-  fulfillment_type: string;
-  delivery_address: string | null;
-  profiles: {
-    full_name: string | null;
-    first_name: string | null;
-    last_name: string | null;
-    phone: string | null;
-    email: string | null;
-  } | null;
-  locations: {
-    name: string;
-    address: string | null;
-  } | null;
-  order_items: OrderItem[];
-}
+type Task = OrderRow & {
+  profiles?: ProfileRow | null;
+  locations?: Pick<LocationRow, "name" | "address"> | null;
+  order_items?: (OrderItemRow & { products?: { name?: string } | null })[];
+};
 
 export default function Logistics() {
   const { isAdmin, profile } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const {
+    add: addUpdatingId,
+    remove: removeUpdatingId,
+    has: hasUpdatingId,
+  } = useUpdatingSet();
 
   const isDriver = profile?.role === "driver";
   const hasAccess = isAdmin || isDriver;
@@ -137,21 +129,37 @@ export default function Logistics() {
     // Courier (Transit) -> Driver drops at customer -> Delivered
     const newStatus =
       task.fulfillment_type === "pickup" ? "ready" : "delivered";
+    addUpdatingId(task.id);
 
-    const { error } = await supabase
-      .from("orders")
-      .update({ status: newStatus })
-      .eq("id", task.id);
+    const previousTasks = tasks;
 
-    if (error) {
+    // Optimistically remove the task from the list
+    setTasks((prev) => prev.filter((t) => t.id !== task.id));
+
+    try {
+      const { error } = await supabase
+        .from("orders")
+        .update({ status: newStatus })
+        .eq("id", task.id);
+
+      if (error) {
+        // revert
+        setTasks(previousTasks);
+        toast.error("Failed to update status");
+        console.error("Failed to update logistics task:", error);
+      } else {
+        const msg =
+          newStatus === "ready"
+            ? "Dropped at store (Ready)"
+            : "Delivered to customer";
+        toast.success(msg);
+      }
+    } catch (err) {
+      setTasks(previousTasks);
       toast.error("Failed to update status");
-    } else {
-      const msg =
-        newStatus === "ready"
-          ? "Dropped at store (Ready)"
-          : "Delivered to customer";
-      toast.success(msg);
-      setTasks((prev) => prev.filter((t) => t.id !== task.id));
+      console.error("Unexpected error updating logistics task:", err);
+    } finally {
+      removeUpdatingId(task.id);
     }
   };
 
@@ -260,10 +268,10 @@ export default function Logistics() {
                 {/* Items */}
                 <div className="pt-2 border-t border-dashed">
                   <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">
-                    Items ({task.order_items.length})
+                    Items ({task.order_items?.length ?? 0})
                   </div>
                   <ul className="text-sm space-y-1">
-                    {task.order_items.map((item, i) => (
+                    {(task.order_items ?? []).map((item, i) => (
                       <li key={i} className="flex justify-between">
                         <span className="truncate pr-2">
                           {item.products?.name}
@@ -281,8 +289,13 @@ export default function Logistics() {
                 <Button
                   className="w-full rounded-t-none h-12 gap-2 text-base"
                   onClick={() => handleCompleteTask(task)}
+                  disabled={hasUpdatingId(task.id)}
                 >
-                  <CheckCircle2 className="h-5 w-5" />
+                  {hasUpdatingId(task.id) ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-5 w-5" />
+                  )}
                   {task.fulfillment_type === "pickup"
                     ? "Dropped at Store"
                     : "Delivered"}

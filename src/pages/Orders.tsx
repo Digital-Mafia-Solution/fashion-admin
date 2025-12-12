@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
+import type { Database } from "../lib/database.types";
+import { useUpdatingSet } from "../hooks/use-updating-set";
 import {
   Card,
   CardContent,
@@ -24,34 +26,27 @@ import {
 import { format } from "date-fns";
 import { toast } from "sonner";
 
-interface Profile {
-  full_name: string | null;
-  first_name: string | null;
-  last_name: string | null;
-  email: string | null;
-  phone: string | null;
-}
-interface OrderItem {
-  quantity: number;
-  products: { name: string } | null;
-}
-interface Order {
-  id: string;
-  created_at: string;
-  status: string;
-  total_amount: number;
-  fulfillment_type: string;
-  delivery_address: string | null;
-  locations: { name: string } | null;
-  profiles: Profile | null;
-  order_items: OrderItem[];
-  pickup_location_id: string | null;
-}
+type OrderRow = Database["public"]["Tables"]["orders"]["Row"];
+type OrderItemRow = Database["public"]["Tables"]["order_items"]["Row"];
+type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
+type LocationRow = Database["public"]["Tables"]["locations"]["Row"];
+
+// The select used in this page returns joined fields; define a friendly type
+type Order = OrderRow & {
+  profiles?: ProfileRow | null;
+  locations?: Pick<LocationRow, "name"> | null;
+  order_items?: (OrderItemRow & { products?: { name?: string } | null })[];
+};
 
 export default function Orders() {
   const { profile, isAdmin } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const {
+    add: addUpdatingId,
+    remove: removeUpdatingId,
+    has: hasUpdatingId,
+  } = useUpdatingSet();
 
   const locationId = profile?.assigned_location_id;
 
@@ -81,13 +76,14 @@ export default function Orders() {
 
       const sorted = rawOrders.sort((a, b) => {
         const openStatuses = ["paid", "pending", "packed", "ready", "transit"];
-        const aIsOpen = openStatuses.includes(a.status);
-        const bIsOpen = openStatuses.includes(b.status);
+        const aIsOpen = openStatuses.includes(a.status ?? "");
+        const bIsOpen = openStatuses.includes(b.status ?? "");
 
         if (aIsOpen && !bIsOpen) return -1;
         if (!aIsOpen && bIsOpen) return 1;
         return (
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          (b.created_at ? new Date(b.created_at).getTime() : 0) -
+          (a.created_at ? new Date(a.created_at).getTime() : 0)
         );
       });
 
@@ -124,23 +120,50 @@ export default function Orders() {
     };
   }, [fetchOrders]);
 
-  const updateStatus = async (id: string, status: string) => {
-    const { error } = await supabase
-      .from("orders")
-      .update({ status })
-      .eq("id", id);
-    if (!error) toast.success(`Order updated to ${status.toUpperCase()}`);
-    else toast.error("Failed to update status");
+  const updateStatus = async (
+    id: string,
+    status: Database["public"]["Enums"]["order_status"]
+  ) => {
+    addUpdatingId(id);
+
+    // Snapshot previous orders so we can revert on failure
+    const previousOrders = orders;
+
+    // Optimistically update only the affected order in local state
+    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
+
+    try {
+      const { error } = await supabase
+        .from("orders")
+        .update({ status })
+        .eq("id", id);
+
+      if (error) {
+        // Revert optimistic update
+        setOrders(previousOrders);
+        toast.error("Failed to update status");
+        console.error("Failed to update order status:", error);
+      } else {
+        toast.success(`Order updated to ${status.toUpperCase()}`);
+      }
+    } catch (err) {
+      // Revert optimistic update on unexpected error
+      setOrders(previousOrders);
+      toast.error("Failed to update status");
+      console.error("Unexpected error updating order status:", err);
+    } finally {
+      removeUpdatingId(id);
+    }
   };
 
-  const getCustomerName = (p: Profile | null) => {
+  const getCustomerName = (p: ProfileRow | null) => {
     if (!p) return "Guest User";
     if (p.first_name && p.last_name) return `${p.first_name} ${p.last_name}`;
     return p.full_name || "Unknown";
   };
 
   const renderActionButton = (order: Order) => {
-    if (["pos_complete", "delivered", "collected"].includes(order.status))
+    if (["pos_complete", "delivered", "collected"].includes(order.status ?? ""))
       return null;
 
     if (order.status === "paid") {
@@ -148,8 +171,14 @@ export default function Orders() {
         <Button
           className="w-full gap-2 bg-blue-600 hover:bg-blue-700"
           onClick={() => updateStatus(order.id, "packed")}
+          disabled={hasUpdatingId(order.id)}
         >
-          <PackageIcon className="h-4 w-4" /> Pack Order
+          {hasUpdatingId(order.id) ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <PackageIcon className="h-4 w-4" />
+          )}{" "}
+          Pack Order
         </Button>
       );
     }
@@ -160,8 +189,14 @@ export default function Orders() {
           <Button
             className="w-full gap-2 bg-orange-600 hover:bg-orange-700"
             onClick={() => updateStatus(order.id, "transit")}
+            disabled={hasUpdatingId(order.id)}
           >
-            <Truck className="h-4 w-4" /> Dispatch to Courier
+            {hasUpdatingId(order.id) ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Truck className="h-4 w-4" />
+            )}{" "}
+            Dispatch to Courier
           </Button>
         );
       } else {
@@ -169,8 +204,14 @@ export default function Orders() {
           <Button
             className="w-full gap-2 bg-green-600 hover:bg-green-700"
             onClick={() => updateStatus(order.id, "ready")}
+            disabled={hasUpdatingId(order.id)}
           >
-            <Check className="h-4 w-4" /> Ready for Collection
+            {hasUpdatingId(order.id) ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Check className="h-4 w-4" />
+            )}{" "}
+            Ready for Collection
           </Button>
         );
       }
@@ -193,8 +234,14 @@ export default function Orders() {
         <Button
           className="w-full gap-2 bg-green-600 hover:bg-green-700"
           onClick={() => updateStatus(order.id, "collected")}
+          disabled={hasUpdatingId(order.id)}
         >
-          <Check className="h-4 w-4" /> Mark Collected
+          {hasUpdatingId(order.id) ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Check className="h-4 w-4" />
+          )}{" "}
+          Mark Collected
         </Button>
       );
     }
@@ -229,13 +276,13 @@ export default function Orders() {
             <Card
               key={order.id}
               className={`flex flex-col border-l-4 
-                ${
-                  order.status === "pos_complete"
-                    ? "border-l-emerald-500"
-                    : ["delivered", "collected"].includes(order.status)
-                    ? "border-l-gray-400"
-                    : "border-l-blue-600"
-                }`}
+                  ${
+                    order.status === "pos_complete"
+                      ? "border-l-emerald-500"
+                      : ["delivered", "collected"].includes(order.status ?? "")
+                      ? "border-l-gray-400"
+                      : "border-l-blue-600"
+                  }`}
             >
               <CardHeader className="pb-3 bg-muted/10">
                 <div className="flex justify-between items-start">
@@ -244,20 +291,22 @@ export default function Orders() {
                       #{order.id.slice(0, 8)}
                     </CardTitle>
                     <CardDescription>
-                      {format(new Date(order.created_at), "MMM dd, HH:mm")}
+                      {order.created_at
+                        ? format(new Date(order.created_at), "MMM dd, HH:mm")
+                        : "-"}
                     </CardDescription>
                   </div>
                   <Badge
                     variant={
                       ["delivered", "pos_complete", "collected"].includes(
-                        order.status
+                        order.status ?? ""
                       )
                         ? "secondary"
                         : "default"
                     }
                     className="capitalize"
                   >
-                    {order.status.replace("_", " ")}
+                    {(order.status ?? "").replace("_", " ")}
                   </Badge>
                 </div>
               </CardHeader>
@@ -267,7 +316,7 @@ export default function Orders() {
                   <User className="h-4 w-4 mt-0.5 text-muted-foreground" />
                   <div>
                     <div className="font-medium">
-                      {getCustomerName(order.profiles)}
+                      {getCustomerName(order.profiles ?? null)}
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {order.profiles?.phone || order.profiles?.email}
@@ -276,7 +325,8 @@ export default function Orders() {
                 </div>
 
                 <div className="space-y-2">
-                  {order.fulfillment_type === "pickup" ? (
+                  {order.fulfillment_type === "pickup" ||
+                  order.fulfillment_type === "warehouse_pickup" ? (
                     <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 dark:bg-blue-900/20 p-2 rounded border border-blue-100 dark:border-blue-900">
                       <Store className="h-4 w-4" />
                       <span className="font-medium">
@@ -301,7 +351,7 @@ export default function Orders() {
                     Items
                   </div>
                   <ul className="list-disc pl-4 space-y-1 text-muted-foreground">
-                    {order.order_items?.map((item: OrderItem, i: number) => (
+                    {order.order_items?.map((item, i: number) => (
                       <li key={i}>
                         <span className="text-foreground font-medium">
                           {item.products?.name}

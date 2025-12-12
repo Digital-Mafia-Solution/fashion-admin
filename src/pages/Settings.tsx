@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { useUpdatingSet } from "../hooks/use-updating-set";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -51,6 +52,11 @@ export default function Settings() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const {
+    add: addUpdatingField,
+    remove: removeUpdatingField,
+    has: hasUpdatingField,
+  } = useUpdatingSet();
 
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -101,7 +107,7 @@ export default function Settings() {
           role: data.role || "staff",
         });
       }
-      setMustChange(data.must_change_password);
+      setMustChange(data?.must_change_password ?? false);
       setLoading(false);
     }
     loadProfile();
@@ -110,6 +116,10 @@ export default function Settings() {
   const handleAvatarUpload = async (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
+    addUpdatingField("avatar");
+
+    const previousProfile = profile;
+
     try {
       setSaving(true);
       if (!event.target.files || event.target.files.length === 0) {
@@ -132,13 +142,20 @@ export default function Settings() {
         data: { publicUrl },
       } = supabase.storage.from("avatars").getPublicUrl(filePath);
 
+      // Optimistically update UI with uploaded avatar
       setProfile((prev) => ({ ...prev, avatar_url: publicUrl }));
 
-      await supabase.from("profiles").upsert({
+      const { error } = await supabase.from("profiles").upsert({
         id: user.id,
         avatar_url: publicUrl,
         email: user.email,
       });
+
+      if (error) {
+        // revert
+        setProfile(previousProfile);
+        throw error;
+      }
 
       toast.success("Profile picture updated!");
     } catch (error: unknown) {
@@ -147,10 +164,12 @@ export default function Settings() {
       toast.error(msg);
     } finally {
       setSaving(false);
+      removeUpdatingField("avatar");
     }
   };
 
   const handleProfileUpdate = async () => {
+    addUpdatingField("profile");
     setSaving(true);
     try {
       if (!user) throw new Error("No user logged in");
@@ -171,6 +190,7 @@ export default function Settings() {
       toast.error("Failed to update profile");
     } finally {
       setSaving(false);
+      removeUpdatingField("profile");
     }
   };
 
@@ -246,7 +266,7 @@ export default function Settings() {
                   accept="image/*"
                   className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer"
                   onChange={handleAvatarUpload}
-                  disabled={saving}
+                  disabled={saving || hasUpdatingField("avatar")}
                 />
                 <Avatar className="w-24 h-24 border-2 border-border group-hover:border-primary transition-colors">
                   <AvatarImage src={profile.avatar_url || ""} />
@@ -324,7 +344,10 @@ export default function Settings() {
               </div>
             </CardContent>
             <CardFooter className="flex justify-end border-t bg-muted/20 px-6 py-4">
-              <Button onClick={handleProfileUpdate} disabled={saving}>
+              <Button
+                onClick={handleProfileUpdate}
+                disabled={saving || hasUpdatingField("profile")}
+              >
                 {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save Profile
               </Button>

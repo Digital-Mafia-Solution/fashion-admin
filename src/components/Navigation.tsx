@@ -22,6 +22,12 @@ export default function Navigation() {
               Home
             </Link>
             <Link
+              to="/stores"
+              className="text-sm text-gray-700 dark:text-gray-200 hover:underline"
+            >
+              Stores
+            </Link>
+            <Link
               to="/about"
               className="text-sm text-gray-700 dark:text-gray-200 hover:underline"
             >
@@ -79,6 +85,13 @@ export default function Navigation() {
               className="text-base text-gray-800 dark:text-gray-100"
             >
               Home
+            </Link>
+            <Link
+              to="/stores"
+              onClick={() => setOpen(false)}
+              className="text-base text-gray-800 dark:text-gray-100"
+            >
+              Stores
             </Link>
             <Link
               to="/about"

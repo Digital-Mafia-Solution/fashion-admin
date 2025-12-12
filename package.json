@@ -19,7 +19,8 @@
     "react-phone-number-input": "^3.4.14",
     "react-router-dom": "^7.9.6",
     "tailwindcss": "^4.1.17",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "use-places-autocomplete": "^4.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
