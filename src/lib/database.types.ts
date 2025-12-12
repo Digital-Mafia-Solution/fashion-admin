@@ -58,7 +58,7 @@ export type Database = {
       }
       locations: {
         Row: {
-          address: string | null
+          address: Json | null
           created_at: string | null
           id: string
           is_active: boolean | null
@@ -66,7 +66,7 @@ export type Database = {
           type: Database["public"]["Enums"]["location_type"]
         }
         Insert: {
-          address?: string | null
+          address?: Json | null
           created_at?: string | null
           id?: string
           is_active?: boolean | null
@@ -74,7 +74,7 @@ export type Database = {
           type: Database["public"]["Enums"]["location_type"]
         }
         Update: {
-          address?: string | null
+          address?: Json | null
           created_at?: string | null
           id?: string
           is_active?: boolean | null

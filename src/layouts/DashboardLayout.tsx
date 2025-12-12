@@ -60,7 +60,7 @@ const NavLinks = ({ items, currentPath, onLinkClick }: NavLinksProps) => {
                 className={cn(
                   "w-full justify-start gap-3 mb-1 font-normal",
                   isActive(item.path) &&
-                    "bg-secondary text-secondary-foreground font-medium"
+                    "bg-secondary text-primary-foreground font-medium"
                 )}
               >
                 <item.icon className="h-4 w-4" />
@@ -121,7 +121,7 @@ export default function DashboardLayout() {
     },
     {
       icon: MapPin,
-      label: "Stores",
+      label: "Locations",
       path: "/stores",
       show: isAdmin || isManager,
     },

@@ -29,7 +29,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import { UserPlus, Shield, Loader2, KeyRound, RefreshCw } from "lucide-react";
+import {
+  UserPlus,
+  Shield,
+  Loader2,
+  KeyRound,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 interface Location {
@@ -55,6 +62,9 @@ export default function Staff() {
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [staffToDelete, setStaffToDelete] = useState<StaffMember | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [newStaff, setNewStaff] = useState({
     email: "",
@@ -153,6 +163,59 @@ export default function Staff() {
     }
   };
 
+  const handleDeleteStaff = async () => {
+    if (!staffToDelete) return;
+
+    setDeleting(true);
+    try {
+      // First, clear any orders associated with this cashier
+      const { error: ordersError } = await supabase
+        .from("orders")
+        .update({ cashier_id: null })
+        .eq("cashier_id", staffToDelete.id);
+
+      if (ordersError) {
+        throw new Error(`Failed to clear orders: ${ordersError.message}`);
+      }
+
+      // Then delete the staff member
+      const { error: deleteError } = await supabase
+        .from("profiles")
+        .delete()
+        .eq("id", staffToDelete.id);
+
+      console.log("Delete response:", { deleteError });
+
+      if (deleteError) {
+        throw new Error(
+          deleteError.message || `Delete failed: ${JSON.stringify(deleteError)}`
+        );
+      }
+
+      toast.success(`${staffToDelete.full_name} has been deleted.`);
+      setDeleteDialogOpen(false);
+      setStaffToDelete(null);
+      fetchData();
+    } catch (error: unknown) {
+      console.error("Delete staff failed:", error);
+      let errorMessage = "Failed to delete staff member";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (
+        typeof error === "object" &&
+        error !== null &&
+        "message" in error
+      ) {
+        errorMessage = String((error as { message: unknown }).message);
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      toast.error(errorMessage);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (!isAdmin) {
     return (
       <div className="flex flex-col items-center justify-center h-[50vh] text-muted-foreground">
@@ -188,7 +251,7 @@ export default function Staff() {
               <TableHead>Role</TableHead>
               <TableHead>Assigned Store</TableHead>
               <TableHead>Contact</TableHead>
-              <TableHead>Reset Password</TableHead>
+              <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -211,7 +274,7 @@ export default function Staff() {
                 </TableCell>
                 <TableCell>{s.locations?.name || "Global / All"}</TableCell>
                 <TableCell className="font-mono text-xs">{s.email}</TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-right flex gap-2 justify-end">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -219,6 +282,19 @@ export default function Staff() {
                   >
                     <KeyRound className="w-4 h-4 mr-2" /> Reset
                   </Button>
+                  {s.role !== "admin" && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => {
+                        setStaffToDelete(s);
+                        setDeleteDialogOpen(true);
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" /> Delete
+                    </Button>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
@@ -308,6 +384,38 @@ export default function Staff() {
             <Button onClick={handleAddStaff} disabled={creating}>
               {creating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create Account
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Staff Member</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. Are you sure you want to delete{" "}
+              <span className="font-semibold">{staffToDelete?.full_name}</span>?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteDialogOpen(false);
+                setStaffToDelete(null);
+              }}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteStaff}
+              disabled={deleting}
+            >
+              {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>
