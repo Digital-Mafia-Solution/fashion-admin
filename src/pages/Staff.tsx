@@ -22,6 +22,7 @@ import {
 } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import EmptyState from "../components/EmptyState";
 import {
   Select,
   SelectContent,
@@ -243,64 +244,77 @@ export default function Staff() {
         </div>
       </div>
 
-      <div className="border rounded-md bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Assigned Store</TableHead>
-              <TableHead>Contact</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {staff.map((s) => (
-              <TableRow key={s.id}>
-                <TableCell className="flex items-center gap-3">
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={s.avatar_url || ""} />
-                    <AvatarFallback>{s.full_name?.[0]}</AvatarFallback>
-                  </Avatar>
-                  {s.full_name}
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    variant={s.role === "admin" ? "default" : "outline"}
-                    className="uppercase text-[10px]"
-                  >
-                    {s.role}
-                  </Badge>
-                </TableCell>
-                <TableCell>{s.locations?.name || "Global / All"}</TableCell>
-                <TableCell className="font-mono text-xs">{s.email}</TableCell>
-                <TableCell className="text-right flex gap-2 justify-end">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleResetPassword(s.id)}
-                  >
-                    <KeyRound className="w-4 h-4 mr-2" /> Reset
-                  </Button>
-                  {s.role !== "admin" && (
+      {loading ? (
+        <div className="py-10 text-center">
+          <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+        </div>
+      ) : staff.length === 0 ? (
+        <EmptyState
+          icon={<UserPlus className="h-10 w-10 opacity-20" />}
+          title="No staff members"
+          description="Add a new staff member to get started."
+          action={<Button onClick={() => setIsAddOpen(true)}>Add Staff</Button>}
+        />
+      ) : (
+        <div className="border rounded-md bg-card">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Assigned Store</TableHead>
+                <TableHead>Contact</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {staff.map((s) => (
+                <TableRow key={s.id}>
+                  <TableCell className="flex items-center gap-3">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={s.avatar_url || ""} />
+                      <AvatarFallback>{s.full_name?.[0]}</AvatarFallback>
+                    </Avatar>
+                    {s.full_name}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={s.role === "admin" ? "default" : "outline"}
+                      className="uppercase text-[10px]"
+                    >
+                      {s.role}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{s.locations?.name || "Global / All"}</TableCell>
+                  <TableCell className="font-mono text-xs">{s.email}</TableCell>
+                  <TableCell className="text-right flex gap-2 justify-end">
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => {
-                        setStaffToDelete(s);
-                        setDeleteDialogOpen(true);
-                      }}
+                      onClick={() => handleResetPassword(s.id)}
                     >
-                      <Trash2 className="w-4 h-4 mr-2" /> Delete
+                      <KeyRound className="w-4 h-4 mr-2" /> Reset
                     </Button>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+                    {s.role !== "admin" && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => {
+                          setStaffToDelete(s);
+                          setDeleteDialogOpen(true);
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" /> Delete
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
 
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
         <DialogContent>

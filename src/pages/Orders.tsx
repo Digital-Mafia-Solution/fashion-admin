@@ -23,6 +23,7 @@ import {
   RefreshCw,
   Loader2,
 } from "lucide-react";
+import EmptyState from "../components/EmptyState";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -35,7 +36,10 @@ type LocationRow = Database["public"]["Tables"]["locations"]["Row"];
 type Order = OrderRow & {
   profiles?: ProfileRow | null;
   locations?: Pick<LocationRow, "name"> | null;
-  order_items?: (OrderItemRow & { products?: { name?: string } | null })[];
+  order_items?: (OrderItemRow & {
+    products?: { name?: string } | null;
+    size_name?: string | null;
+  })[];
 };
 
 export default function Orders() {
@@ -58,6 +62,7 @@ export default function Orders() {
         locations (name),
         order_items (
             quantity,
+            size_name,
             products (name)
         )
       `);
@@ -270,6 +275,12 @@ export default function Orders() {
         <div className="flex justify-center p-20">
           <Loader2 className="animate-spin text-muted-foreground" />
         </div>
+      ) : orders.length === 0 ? (
+        <EmptyState
+          icon={<PackageIcon className="h-12 w-12 opacity-20" />}
+          title="No orders found"
+          description="There are currently no orders to display."
+        />
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {orders.map((order) => (
@@ -356,6 +367,11 @@ export default function Orders() {
                         <span className="text-foreground font-medium">
                           {item.products?.name}
                         </span>
+                        {item.size_name && (
+                          <span className="opacity-70 ml-1">
+                            - Size: {item.size_name}
+                          </span>
+                        )}
                         <span className="opacity-70 ml-1">
                           (x{item.quantity})
                         </span>

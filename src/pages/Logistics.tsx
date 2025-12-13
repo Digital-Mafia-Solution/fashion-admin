@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
+import EmptyState from "../components/EmptyState";
 
 // Interfaces
 type OrderRow = Database["public"]["Tables"]["orders"]["Row"];
@@ -203,10 +204,11 @@ export default function Logistics() {
       </div>
 
       {tasks.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-4">
-          <Truck className="h-12 w-12 opacity-20" />
-          <p>You're all caught up! No active tasks.</p>
-        </div>
+        <EmptyState
+          icon={<Truck className="h-12 w-12 opacity-20" />}
+          title="You're all caught up"
+          description="No active tasks."
+        />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {tasks.map((task) => (

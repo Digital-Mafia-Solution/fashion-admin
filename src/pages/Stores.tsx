@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import type { Database } from "../lib/database.types";
 import { Button } from "../components/ui/button";
@@ -21,6 +21,7 @@ import {
   SelectItem,
 } from "../components/ui/select";
 import { Badge } from "../components/ui/badge";
+import EmptyState from "../components/EmptyState";
 import {
   Store,
   Warehouse,
@@ -88,6 +89,8 @@ export default function Locations() {
     address: null,
     is_active: true,
   });
+
+  const nameRef = useRef<HTMLInputElement | null>(null);
 
   const fetchLocations = async () => {
     setLoading(true);
@@ -305,6 +308,7 @@ export default function Locations() {
                   setForm({ ...form, name: e.target.value })
                 }
                 disabled={saving}
+                ref={nameRef}
               />
             </div>
 
@@ -369,12 +373,18 @@ export default function Locations() {
           <Loader2 className="animate-spin mx-auto h-8 w-8 text-muted-foreground" />
         </div>
       ) : locations.length === 0 ? (
-        <Card className="border-0 shadow-sm">
-          <CardContent className="py-16 text-center">
+        <EmptyState
+          icon={
             <MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">No locations added yet.</p>
-          </CardContent>
-        </Card>
+          }
+          title="No locations added yet"
+          description="Use the form above to add your first location."
+          action={
+            <Button onClick={() => nameRef.current?.focus()}>
+              Add Location
+            </Button>
+          }
+        />
       ) : (
         <div className="space-y-8">
           {typeOrder.map((type) => {

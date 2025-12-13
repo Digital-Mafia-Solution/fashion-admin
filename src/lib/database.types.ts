@@ -18,25 +18,28 @@ export type Database = {
         Row: {
           id: string
           location_id: string
-          price: number | null
+          price: number
           product_id: string
           quantity: number | null
+          size_name: string | null
           updated_at: string | null
         }
         Insert: {
           id?: string
           location_id: string
-          price?: number | null
+          price: number
           product_id: string
           quantity?: number | null
+          size_name?: string | null
           updated_at?: string | null
         }
         Update: {
           id?: string
           location_id?: string
-          price?: number | null
+          price?: number
           product_id?: string
           quantity?: number | null
+          size_name?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -90,6 +93,7 @@ export type Database = {
           price_at_purchase: number
           product_id: string
           quantity: number
+          size_name: string | null
         }
         Insert: {
           id?: string
@@ -97,6 +101,7 @@ export type Database = {
           price_at_purchase: number
           product_id: string
           quantity?: number
+          size_name?: string | null
         }
         Update: {
           id?: string
@@ -104,6 +109,7 @@ export type Database = {
           price_at_purchase?: number
           product_id?: string
           quantity?: number
+          size_name?: string | null
         }
         Relationships: [
           {
@@ -180,39 +186,131 @@ export type Database = {
           },
         ]
       }
-      products: {
+      product_sizes: {
         Row: {
-          category: string[] | null
+          back_length_cm: number | null
+          belt_length_cm: number | null
+          belt_width_cm: number | null
+          chest_cm: number | null
           created_at: string | null
-          description: string | null
+          foot_length_cm: number | null
+          foot_width_cm: number | null
+          front_length_cm: number | null
+          hip_cm: number | null
           id: string
-          image_url: string | null
-          name: string
-          price: number
-          sizes: string[] | null
-          sku: string
+          inseam_cm: number | null
+          product_id: string
+          shoulder_width_cm: number | null
+          size_eu: number | null
+          size_name: string
+          size_us: number | null
+          sleeve_length_cm: number | null
+          thigh_width_cm: number | null
+          waist_cm: number | null
         }
         Insert: {
-          category?: string[] | null
+          back_length_cm?: number | null
+          belt_length_cm?: number | null
+          belt_width_cm?: number | null
+          chest_cm?: number | null
           created_at?: string | null
-          description?: string | null
+          foot_length_cm?: number | null
+          foot_width_cm?: number | null
+          front_length_cm?: number | null
+          hip_cm?: number | null
           id?: string
-          image_url?: string | null
-          name: string
-          price: number
-          sizes?: string[] | null
-          sku: string
+          inseam_cm?: number | null
+          product_id: string
+          shoulder_width_cm?: number | null
+          size_eu?: number | null
+          size_name: string
+          size_us?: number | null
+          sleeve_length_cm?: number | null
+          thigh_width_cm?: number | null
+          waist_cm?: number | null
         }
         Update: {
+          back_length_cm?: number | null
+          belt_length_cm?: number | null
+          belt_width_cm?: number | null
+          chest_cm?: number | null
+          created_at?: string | null
+          foot_length_cm?: number | null
+          foot_width_cm?: number | null
+          front_length_cm?: number | null
+          hip_cm?: number | null
+          id?: string
+          inseam_cm?: number | null
+          product_id?: string
+          shoulder_width_cm?: number | null
+          size_eu?: number | null
+          size_name?: string
+          size_us?: number | null
+          sleeve_length_cm?: number | null
+          thigh_width_cm?: number | null
+          waist_cm?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_sizes_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      products: {
+        Row: {
+          allow_custom_measurements: boolean | null
+          category: string[] | null
+          clothing_type: string | null
+          created_at: string | null
+          description: string | null
+          height_mm: number | null
+          id: string
+          image_url: string | null
+          is_archived: boolean
+          length_mm: number | null
+          name: string
+          sizes: string[] | null
+          sku: string
+          weight_grams: number | null
+          width_mm: number | null
+        }
+        Insert: {
+          allow_custom_measurements?: boolean | null
           category?: string[] | null
+          clothing_type?: string | null
           created_at?: string | null
           description?: string | null
+          height_mm?: number | null
           id?: string
           image_url?: string | null
+          is_archived?: boolean
+          length_mm?: number | null
+          name: string
+          sizes?: string[] | null
+          sku: string
+          weight_grams?: number | null
+          width_mm?: number | null
+        }
+        Update: {
+          allow_custom_measurements?: boolean | null
+          category?: string[] | null
+          clothing_type?: string | null
+          created_at?: string | null
+          description?: string | null
+          height_mm?: number | null
+          id?: string
+          image_url?: string | null
+          is_archived?: boolean
+          length_mm?: number | null
           name?: string
-          price?: number
           sizes?: string[] | null
           sku?: string
+          weight_grams?: number | null
+          width_mm?: number | null
         }
         Relationships: []
       }
