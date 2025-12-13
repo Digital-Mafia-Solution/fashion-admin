@@ -664,11 +664,31 @@ export default function Inventory() {
     }
   };
 
-  const filteredProducts = products.filter(
-    (p) =>
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.sku.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredProducts = products
+    .filter(
+      (p) =>
+        p.name.toLowerCase().includes(search.toLowerCase()) ||
+        p.sku.toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a, b) => {
+      // For non-admin users, prioritize products with inventory at their location
+      if (!isAdmin && profile?.assigned_location_id) {
+        const aHasStock = (a.inventory ?? []).some(
+          (inv: InventoryExt) =>
+            inv.location_id === profile.assigned_location_id
+        );
+        const bHasStock = (b.inventory ?? []).some(
+          (inv: InventoryExt) =>
+            inv.location_id === profile.assigned_location_id
+        );
+
+        // If one has stock and the other doesn't, put the one with stock first
+        if (aHasStock && !bHasStock) return -1;
+        if (!aHasStock && bHasStock) return 1;
+      }
+      // Otherwise maintain original order
+      return 0;
+    });
 
   return (
     <div className="space-y-6">
